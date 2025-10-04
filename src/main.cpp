@@ -176,6 +176,9 @@ int run_strobealign(int argc, char **argv) {
     aln_params.gap_open = opt.O;
     aln_params.gap_extend = opt.E;
     aln_params.end_bonus = opt.end_bonus;
+    aln_params.ancient_dna = opt.ancient_dna;
+    aln_params.transition_penalty = opt.transition_penalty;
+    aln_params.transversion_penalty = opt.transversion_penalty;
 
     MappingParameters map_param;
     map_param.r = opt.r;

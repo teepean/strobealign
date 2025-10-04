@@ -55,6 +55,9 @@ CommandLineOptions parse_command_line_arguments(int argc, char **argv) {
     args::ValueFlag<int> O(parser, "INT", "Gap open penalty [12]", {'O'});
     args::ValueFlag<int> E(parser, "INT", "Gap extension penalty [1]", {'E'});
     args::ValueFlag<int> end_bonus(parser, "INT", "Soft clipping penalty [10]", {'L'});
+    args::Flag ancient_dna(parser, "ancient-dna", "Enable ancient DNA mode with lower penalties for C<->T and A<->G transitions (common damage patterns) [off]", {"ancient-dna"});
+    args::ValueFlag<int> transition_penalty(parser, "INT", "Penalty for transition mismatches (C<->T, A<->G) in ancient DNA mode [4]", {"transition-penalty"});
+    args::ValueFlag<int> transversion_penalty(parser, "INT", "Penalty for transversion mismatches in ancient DNA mode [8]", {"transversion-penalty"});
 
     args::Group chaining(parser, "Collinear Chaining:");
     args::Flag nams(parser, "nams", "Use NAMs instead of collinear chaining for alignments", {"nams"});
@@ -149,6 +152,9 @@ CommandLineOptions parse_command_line_arguments(int argc, char **argv) {
     if (O) { opt.O = args::get(O); }
     if (E) { opt.E = args::get(E); }
     if (end_bonus) { opt.end_bonus = args::get(end_bonus); }
+    if (ancient_dna) { opt.ancient_dna = true; }
+    if (transition_penalty) { opt.transition_penalty = args::get(transition_penalty); }
+    if (transversion_penalty) { opt.transversion_penalty = args::get(transversion_penalty); }
 
     // Chaining
     if (nams) { opt.nams = true; }

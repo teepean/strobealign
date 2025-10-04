@@ -58,6 +58,11 @@ struct CommandLineOptions {
     int E { 1 };
     int end_bonus { 10 };
 
+    // Ancient DNA support
+    bool ancient_dna { false };
+    int transition_penalty { 4 };  // Lower penalty for C<->T, A<->G transitions (default: half of B)
+    int transversion_penalty { 8 }; // Higher penalty for other mismatches (default: same as B)
+
     // Chaining
     bool nams{ false };
     int max_lookback{ 50 };

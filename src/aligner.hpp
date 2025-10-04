@@ -15,6 +15,11 @@ struct AlignmentParameters {
     int gap_open;
     int gap_extend;
     int end_bonus;
+
+    // Ancient DNA support: separate penalties for transitions vs transversions
+    bool ancient_dna;
+    int transition_penalty;    // C<->T, A<->G
+    int transversion_penalty;  // All other mismatches
 };
 
 std::ostream& operator<<(std::ostream& os, const AlignmentParameters& params);
@@ -35,7 +40,13 @@ struct Aligner {
 public:
     Aligner(AlignmentParameters parameters)
         : parameters(parameters)
-        , ssw_aligner(StripedSmithWaterman::Aligner(parameters.match, parameters.mismatch, parameters.gap_open, parameters.gap_extend))
+        , ssw_aligner(StripedSmithWaterman::Aligner(
+            parameters.match,
+            // Use average penalty for ancient DNA mode since SSW doesn't support per-base penalties
+            // Assuming ~50% transitions in aDNA: (transition_penalty + transversion_penalty) / 2
+            parameters.ancient_dna ? (parameters.transition_penalty + parameters.transversion_penalty) / 2 : parameters.mismatch,
+            parameters.gap_open,
+            parameters.gap_extend))
     { }
 
     std::optional<AlignmentInfo> align(const std::string &query, const std::string &ref) const;
@@ -68,11 +79,11 @@ inline int hamming_distance(const std::string &s, const std::string &t) {
 }
 
 std::tuple<size_t, size_t, int> highest_scoring_segment(
-    const std::string& query, const std::string& ref, int match, int mismatch, int end_bonus
+    const std::string& query, const std::string& ref, const AlignmentParameters& params
 );
 
 AlignmentInfo hamming_align(
-    const std::string &query, const std::string &ref, int match, int mismatch, int end_bonus
+    const std::string &query, const std::string &ref, const AlignmentParameters& params
 );
 
 #endif

@@ -10,6 +10,25 @@
 #include <ostream>
 #include "aligner.hpp"
 
+// Helper function to determine if a mismatch is a transition (C<->T or A<->G)
+// Used for ancient DNA damage pattern support
+static inline bool is_transition(char query_base, char ref_base) {
+    // Transitions: C<->T and A<->G (purines and pyrimidines)
+    if ((query_base == 'C' || query_base == 'c') && (ref_base == 'T' || ref_base == 't')) return true;
+    if ((query_base == 'T' || query_base == 't') && (ref_base == 'C' || ref_base == 'c')) return true;
+    if ((query_base == 'A' || query_base == 'a') && (ref_base == 'G' || ref_base == 'g')) return true;
+    if ((query_base == 'G' || query_base == 'g') && (ref_base == 'A' || ref_base == 'a')) return true;
+    return false;
+}
+
+// Get the appropriate mismatch penalty based on ancient DNA mode
+static inline int get_mismatch_penalty(const AlignmentParameters& params, char query_base, char ref_base) {
+    if (params.ancient_dna && is_transition(query_base, ref_base)) {
+        return params.transition_penalty;
+    }
+    return params.ancient_dna ? params.transversion_penalty : params.mismatch;
+}
+
 std::optional<AlignmentInfo> Aligner::align(const std::string &query, const std::string &ref) const {
     m_align_calls++;
     AlignmentInfo aln;
@@ -37,6 +56,7 @@ std::optional<AlignmentInfo> Aligner::align(const std::string &query, const std:
     aln.query_start = alignment_ssw.query_begin;
     aln.query_end = alignment_ssw.query_end + 1;
 
+
     // Try to extend to beginning of the query to get an end bonus
     auto qstart = aln.query_start;
     auto rstart = aln.ref_start;
@@ -50,7 +70,7 @@ std::optional<AlignmentInfo> Aligner::align(const std::string &query, const std:
             score += parameters.match;
             front_cigar.push(CIGAR_EQ, 1);
         } else {
-            score -= parameters.mismatch;
+            score -= get_mismatch_penalty(parameters, query[qstart], ref[rstart]);
             front_cigar.push(CIGAR_X, 1);
             edits++;
         }
@@ -80,7 +100,7 @@ std::optional<AlignmentInfo> Aligner::align(const std::string &query, const std:
             score += parameters.match;
             back_cigar.push(CIGAR_EQ, 1);
         } else {
-            score -= parameters.mismatch;
+            score -= get_mismatch_penalty(parameters, query[qend], ref[rend]);
             back_cigar.push(CIGAR_X, 1);
             edits++;
         }
@@ -99,6 +119,56 @@ std::optional<AlignmentInfo> Aligner::align(const std::string &query, const std:
         aln.edit_distance = edits;
     }
 
+    // Final validation: ensure CIGAR covers exactly the query length
+    // Calculate actual CIGAR length (operations that consume query bases: M, I, S, =, X)
+    size_t cigar_query_len = 0;
+    for (auto op : aln.cigar.m_ops) {
+        int op_type = op & 0xF;
+        int op_len = op >> 4;
+        if (op_type == 0 || op_type == 1 || op_type == 4 || op_type == 7 || op_type == 8) { // M, I, S, =, X
+            cigar_query_len += op_len;
+        }
+    }
+
+    // Fix CIGAR length mismatch
+    if (cigar_query_len < query.length()) {
+        // CIGAR is too short - add soft clip at the end
+        size_t missing = query.length() - cigar_query_len;
+        if (!aln.cigar.m_ops.empty() && (aln.cigar.m_ops.back() & 0xF) == CIGAR_SOFTCLIP) {
+            // Extend existing soft clip
+            size_t existing_clip = aln.cigar.m_ops.back() >> 4;
+            aln.cigar.m_ops.back() = ((existing_clip + missing) << 4) | CIGAR_SOFTCLIP;
+        } else {
+            // Add new soft clip
+            aln.cigar.m_ops.push_back((missing << 4) | CIGAR_SOFTCLIP);
+        }
+    } else if (cigar_query_len > query.length()) {
+        // CIGAR is too long - remove from soft clips
+        size_t excess = cigar_query_len - query.length();
+
+        // Try to remove from trailing soft clip first
+        if (!aln.cigar.m_ops.empty() && (aln.cigar.m_ops.back() & 0xF) == CIGAR_SOFTCLIP) {
+            size_t soft_clip_len = aln.cigar.m_ops.back() >> 4;
+            if (soft_clip_len > excess) {
+                aln.cigar.m_ops.back() = ((soft_clip_len - excess) << 4) | CIGAR_SOFTCLIP;
+                excess = 0;
+            } else {
+                aln.cigar.m_ops.pop_back();
+                excess -= soft_clip_len;
+            }
+        }
+
+        // If still excess, try leading soft clip
+        if (excess > 0 && !aln.cigar.m_ops.empty() && (aln.cigar.m_ops[0] & 0xF) == CIGAR_SOFTCLIP) {
+            size_t soft_clip_len = aln.cigar.m_ops[0] >> 4;
+            if (soft_clip_len > excess) {
+                aln.cigar.m_ops[0] = ((soft_clip_len - excess) << 4) | CIGAR_SOFTCLIP;
+            } else {
+                aln.cigar.m_ops.erase(aln.cigar.m_ops.begin());
+            }
+        }
+    }
+
     return aln;
 }
 
@@ -110,21 +180,21 @@ std::optional<AlignmentInfo> Aligner::align(const std::string &query, const std:
  * of the query, once for each end.
  */
 std::tuple<size_t, size_t, int> highest_scoring_segment(
-    const std::string& query, const std::string& ref, int match, int mismatch, int end_bonus
+    const std::string& query, const std::string& ref, const AlignmentParameters& params
 ) {
     size_t n = query.length();
 
     size_t start = 0; // start of the current segment
-    int score = end_bonus; // accumulated score so far in the current segment
+    int score = params.end_bonus; // accumulated score so far in the current segment
 
     size_t best_start = 0;
     size_t best_end = 0;
     int best_score = 0;
     for (size_t i = 0; i < n; ++i) {
         if (query[i] == ref[i]) {
-            score += match;
+            score += params.match;
         } else {
-            score -= mismatch;
+            score -= get_mismatch_penalty(params, query[i], ref[i]);
         }
         if (score < 0) {
             start = i + 1;
@@ -136,8 +206,8 @@ std::tuple<size_t, size_t, int> highest_scoring_segment(
             best_end = i + 1;
         }
     }
-    if (score + end_bonus > best_score) {
-        best_score = score + end_bonus;
+    if (score + params.end_bonus > best_score) {
+        best_score = score + params.end_bonus;
         best_end = query.length();
         best_start = start;
     }
@@ -145,14 +215,14 @@ std::tuple<size_t, size_t, int> highest_scoring_segment(
 }
 
 AlignmentInfo hamming_align(
-    const std::string &query, const std::string &ref, int match, int mismatch, int end_bonus
+    const std::string &query, const std::string &ref, const AlignmentParameters& params
 ) {
     AlignmentInfo aln;
     if (query.length() != ref.length()) {
         return aln;
     }
 
-    auto [segment_start, segment_end, score] = highest_scoring_segment(query, ref, match, mismatch, end_bonus);
+    auto [segment_start, segment_end, score] = highest_scoring_segment(query, ref, params);
 
     Cigar cigar;
     if (segment_start > 0) {
@@ -201,7 +271,12 @@ std::ostream& operator<<(std::ostream& os, const AlignmentParameters& params) {
         << ", mismatch=" << params.mismatch
         << ", gap_open=" << params.gap_open
         << ", gap_extend=" << params.gap_extend
-        << ", end_bonus=" << params.end_bonus
-        << ")";
+        << ", end_bonus=" << params.end_bonus;
+    if (params.ancient_dna) {
+        os << ", ancient_dna=true"
+           << ", transition_penalty=" << params.transition_penalty
+           << ", transversion_penalty=" << params.transversion_penalty;
+    }
+    os << ")";
     return os;
 }

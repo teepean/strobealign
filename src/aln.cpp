@@ -231,7 +231,7 @@ inline Alignment extend_seed(
         auto hamming_dist = hamming_distance(query, ref_segm_ham);
 
         if (hamming_dist >= 0 && (((float) hamming_dist / query.size()) < 0.05) ) { //Hamming distance worked fine, no need to ksw align
-            info = hamming_align(query, ref_segm_ham, aligner.parameters.match, aligner.parameters.mismatch, aligner.parameters.end_bonus);
+            info = hamming_align(query, ref_segm_ham, aligner.parameters);
             result_ref_start = projected_ref_start + info.ref_start;
             gapped = false;
         }

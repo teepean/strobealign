@@ -1884,7 +1884,7 @@ static inline Alignment get_alignment_unused(
         int hamming_dist = hamming_distance(r_tmp, ref_segm);
 
         if (hamming_dist >= 0 && (((float) hamming_dist / ref_segm_size) < 0.05) ) { //Hamming distance worked fine, no need to ksw align
-            auto info = hamming_align(r_tmp, ref_segm, aligner.parameters.match, aligner.parameters.mismatch, aligner.parameters.end_bonus);
+            auto info = hamming_align(r_tmp, ref_segm, aligner.parameters);
             alignment.cigar = std::move(info.cigar);
             alignment.edit_distance = info.edit_distance;
             alignment.score = info.sw_score; // aln_params.match*(read_len-hamming_dist) - aln_params.mismatch*hamming_dist;
