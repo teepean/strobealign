@@ -271,6 +271,26 @@ These findings suggest potential value in:
 - Integration of transition-aware scoring in other alignment frameworks
 - Optimization of duplicate marking strategies for ancient DNA-specific damage patterns
 
+### Software and Code References
+
+This analysis utilized and examined source code from multiple alignment tools:
+
+- **BWA** (Li & Durbin 2009, 2010): Source code examined to understand BWT-based backtracking in BWA-aln and exact k-mer seeding in BWA-mem
+- **SHRiMP** (Rumble et al. 2009): Source code analyzed for spaced seed strategies applicable to damaged DNA
+- **Strobealign** (Sahlin 2022): Modified to implement ancient DNA-specific transition-aware scoring
+
 ### Data Availability
 
 Alignment commands, parameters, and analysis scripts are available in the repository. Raw data consists of previously published ancient DNA sample pjp010.
+
+## References
+
+Li H, Durbin R. (2009). Fast and accurate short read alignment with Burrows-Wheeler transform. *Bioinformatics*, 25(14), 1754-1760.
+
+Li H, Durbin R. (2010). Fast and accurate long-read alignment with Burrows-Wheeler transform. *Bioinformatics*, 26(5), 589-595.
+
+Oliva A, Tobler R, Cooper A, Llamas B, Souilmi Y. (2021). Systematic benchmark of ancient DNA read mapping. *Briefings in Bioinformatics*, 22(5), bbab076.
+
+Rumble SM, Lacroute P, Dalca AV, Fiume M, Sidow A, Brudno M. (2009). SHRiMP: Accurate mapping of short color-space reads. *PLoS Computational Biology*, 5(5), e1000386.
+
+Sahlin K. (2022). Strobealign: flexible seed size enables ultra-fast and accurate read alignment. *Genome Biology*, 23, 260.
