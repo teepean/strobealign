@@ -47,37 +47,37 @@ SORT_THREADS=$((THREADS / 2))
 $STROBEALIGN --ancient-dna --mcs=always -S 0.95 -r $READ_LENGTH -t $THREADS $REFERENCE $READS | \
     samtools sort --no-PG -@$SORT_THREADS -m2G -o ${OUTPUT_PREFIX}_k16.sorted.bam -
 
-echo "[Stage 1] Indexing and extracting unmapped reads..."
-samtools index ${OUTPUT_PREFIX}_k16.sorted.bam
-samtools view -h -f 4 ${OUTPUT_PREFIX}_k16.sorted.bam | samtools fastq - > ${OUTPUT_PREFIX}_unmapped_k16.fq
+echo "[Stage 1] Indexing k=16 alignment..."
+samtools index -@$THREADS ${OUTPUT_PREFIX}_k16.sorted.bam
 
-UNMAPPED_COUNT=$(wc -l < ${OUTPUT_PREFIX}_unmapped_k16.fq)
-UNMAPPED_READS=$((UNMAPPED_COUNT / 4))
-echo "[Stage 1] Extracted $UNMAPPED_READS unmapped reads"
+# Count unmapped reads without creating intermediate file
+UNMAPPED_READS=$(samtools view -c -f 4 -@$THREADS ${OUTPUT_PREFIX}_k16.sorted.bam)
+echo "[Stage 1] Found $UNMAPPED_READS unmapped reads"
 
 if [ $UNMAPPED_READS -eq 0 ]; then
     echo "[Stage 2] No unmapped reads, skipping k=12 rescue"
     mv ${OUTPUT_PREFIX}_k16.sorted.bam ${OUTPUT_PREFIX}.bam
     mv ${OUTPUT_PREFIX}_k16.sorted.bam.bai ${OUTPUT_PREFIX}.bam.bai
 else
-    # Stage 2: Rescue with k=12 (direct to BAM)
-    echo "[Stage 2] Rescuing unmapped reads with k=12..."
-    $STROBEALIGN --ancient-dna --mcs=always -S 0.95 -r $READ_LENGTH -k 12 -t $THREADS $REFERENCE ${OUTPUT_PREFIX}_unmapped_k16.fq | \
+    # Stage 2: Rescue with k=12 (pipe unmapped reads directly to strobealign)
+    echo "[Stage 2] Rescuing $UNMAPPED_READS unmapped reads with k=12..."
+    samtools view -h -f 4 -@$THREADS ${OUTPUT_PREFIX}_k16.sorted.bam | \
+        samtools fastq - | \
+        $STROBEALIGN --ancient-dna --mcs=always -S 0.95 -r $READ_LENGTH -k 12 -t $THREADS $REFERENCE - | \
         samtools sort --no-PG -@$SORT_THREADS -m2G -o ${OUTPUT_PREFIX}_k12_rescue.bam -
-    samtools index ${OUTPUT_PREFIX}_k12_rescue.bam
+    samtools index -@$THREADS ${OUTPUT_PREFIX}_k12_rescue.bam
 
     # Stage 3: Merge results
     echo "[Stage 3] Merging k=16 mapped + k=12 rescued reads..."
-    samtools merge -f -@$SORT_THREADS ${OUTPUT_PREFIX}_merged.bam \
+    samtools merge -f -@$THREADS ${OUTPUT_PREFIX}_merged.bam \
         ${OUTPUT_PREFIX}_k16.sorted.bam ${OUTPUT_PREFIX}_k12_rescue.bam
     samtools sort --no-PG -@$SORT_THREADS -m2G -o ${OUTPUT_PREFIX}.bam ${OUTPUT_PREFIX}_merged.bam
-    samtools index ${OUTPUT_PREFIX}.bam
+    samtools index -@$THREADS ${OUTPUT_PREFIX}.bam
 
     # Cleanup intermediate files
     rm -f ${OUTPUT_PREFIX}_k16.sorted.bam ${OUTPUT_PREFIX}_k16.sorted.bam.bai
     rm -f ${OUTPUT_PREFIX}_k12_rescue.bam ${OUTPUT_PREFIX}_k12_rescue.bam.bai
     rm -f ${OUTPUT_PREFIX}_merged.bam
-    rm -f ${OUTPUT_PREFIX}_unmapped_k16.fq
 fi
 
 echo ""
